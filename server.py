@@ -1,28 +1,42 @@
-import socket, os
+import os
 
-soc = socket.socket()
-soc.bind(("localhost", 8080))
-soc.listen(1)
-print 'Serving HTTP on port 8080...'
+top = "<div class='top'>Middleware TOP</div>"
+bottom = "<div class='botton'>Middleware BOTTOM</div>"
 
-while True:
-	client_connection, client_address = soc.accept()
-	request = client_connection.recv(1024)
-	print request
+class WSGIApp(object):
+	def __init__(self, app):
+		self.app = app
 
-	path = '.' + request.split('\n')[0].split(' ')[1]
+	def __call__(self, environ, start_response):
+		response = self.app(environ, start_response)[0]
+		if response.find("<body>") >-1:
+			response = response.replace("<body>", "<body>" + top).replace("</body>", bottom + "</body>")
+			yield response
+		else:
+			yield top + response + bottom
+
+def app(environ, start_response):
+	path = '.' + environ['PATH_INFO']
 	if not os.path.isfile(path):
 		path ='./index.html'
 
-	if path.split('.')[-1] == "html":
-		mimeType = "text/html"
-	else:
-		mimeType = "image/jpeg"
-
 	fd = open(path,'r')
-	client_connection.send("HTTP/1.1 200 OK\nContent-Type: " + mimeType + "\n\n\n")
-	client_connection.send(fd.read())
+	data = fd.read()
 	fd.close()
 
-	client_connection.close()
-soc.close()
+	response_code = '200 OK'
+	response_type = ('Content-Type', 'text/HTML')
+	start_response(response_code, [response_type])
+	return [data]
+
+app = WSGIApp(app)
+
+
+# allows use this code in the functions and classes above
+# ('import serve' at the top of this file)
+if __name__ == '__main__':
+	from paste import reloader
+	from paste.httpserver import serve
+
+	reloader.install()
+	serve(app, host='localhost', port=8082)
