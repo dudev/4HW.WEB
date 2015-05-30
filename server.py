@@ -1,42 +1,51 @@
-import os
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+# Устанавливаем стандартную внешнюю кодировку = utf8
+import sys
+reload(sys)
+sys.setdefaultencoding('utf8')
 
-top = "<div class='top'>Middleware TOP</div>"
-bottom = "<div class='botton'>Middleware BOTTOM</div>"
+import selector
+from jinja2 import Environment, FileSystemLoader
 
-class WSGIApp(object):
-	def __init__(self, app):
-		self.app = app
+to_index = u"""<a href="/">Домой</a>"""
+to_about = u"""<a href="about/aboutme.html">Обо мне</a>"""
 
-	def __call__(self, environ, start_response):
-		response = self.app(environ, start_response)[0]
-		if response.find("<body>") >-1:
-			response = response.replace("<body>", "<body>" + top).replace("</body>", bottom + "</body>")
-			yield response
-		else:
-			yield top + response + bottom
+response_code = '200 OK'
+response_type = ('Content-Type', 'text/html')
 
-def app(environ, start_response):
-	path = '.' + environ['PATH_INFO']
-	if not os.path.isfile(path):
-		path ='./index.html'
+class BaseApp(object):
+	def __init__(self, environ, start_response, link, template):
+		self.env = environ
+		self.start_response = start_response
+		self.templates  = Environment(loader=FileSystemLoader('templates'))
+		self.template = template
+		self.link = link
+	def __iter__(self):
+		self.start_response(response_code, [response_type])
+		template = self.templates.get_template(self.template)
+		yield template.render(link=self.link)
 
-	fd = open(path,'r')
-	data = fd.read()
-	fd.close()
+class IndexApp(BaseApp):
+	def __init__(self,environ,start_response):
+		BaseApp.__init__(self, environ, start_response, to_about, "index.html")
 
-	response_code = '200 OK'
-	response_type = ('Content-Type', 'text/HTML')
-	start_response(response_code, [response_type])
-	return [data]
+class AboutApp(BaseApp):
+	def __init__(self,environ,start_response):
+		BaseApp.__init__(self, environ, start_response, to_index, "about/aboutme.html")
 
-app = WSGIApp(app)
+def WSGIApp():
+	disp = selector.Selector()
+	disp.add("/", GET = IndexApp)
+	disp.add("/index.html", GET = IndexApp)
+	disp.add("/about/aboutme.html", GET = AboutApp)
+	return disp
+
 
 
 # allows use this code in the functions and classes above
 # ('import serve' at the top of this file)
 if __name__ == '__main__':
-	from paste import reloader
 	from paste.httpserver import serve
-
-	reloader.install()
-	serve(app, host='localhost', port=8082)
+	app = WSGIApp()
+	serve(app, host='localhost', port=8087)
